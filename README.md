@@ -147,9 +147,15 @@ services:
 
 ### Using Unix Domain Sockets
 
-For improved performance and simplified setup on local systems, you can use Unix domain sockets instead of TCP:
+For improved performance and simplified setup on local systems, you can use Unix domain sockets instead of TCP. Unix sockets eliminate network stack overhead and are ideal for debugging on the same machine.
 
-**MCP Configuration:**
+**Benefits:**
+- ⚡ Lower latency (no TCP/IP stack overhead)
+- 🔒 Better security (file permissions instead of port binding)
+- 📦 Simpler setup (no port management)
+- 🚀 Faster communication for local debugging
+
+**MCP Configuration (Unix Socket):**
 
 ```json
 {
@@ -175,12 +181,32 @@ xdebug.start_with_request=yes
 xdebug.client_host=unix:///tmp/xdebug.sock
 ```
 
+**Socket File Permissions:**
+
+The socket file is created with default permissions. To restrict access, you can:
+
+```bash
+# After MCP server starts
+chmod 600 /tmp/xdebug.sock
+
+# Or use a secure directory
+mkdir -p ~/.xdebug && chmod 700 ~/.xdebug
+# Then set XDEBUG_SOCKET_PATH=$HOME/.xdebug/xdebug.sock
+```
+
+**Automatic Cleanup:**
+
 When `XDEBUG_SOCKET_PATH` is set, the server will:
 - Listen on the specified Unix socket instead of TCP port
-- Automatically clean up stale socket files on startup and shutdown
+- Automatically clean up stale socket files on startup (prevents "address in use" errors)
+- Automatically clean up socket files on shutdown
 - Use the same debugging tools and features as TCP mode
 
-This approach is recommended for local development as Unix sockets typically have lower latency than TCP loopback connections.
+**When to Use Unix Sockets:**
+- ✅ Local PHP development (best performance)
+- ✅ Same-machine debugging
+- ✅ High-frequency breakpoint hits
+- ❌ Remote debugging (use TCP instead)
 
 ## Available MCP Tools (41 Total)
 
@@ -337,20 +363,43 @@ Use capture_request_context to see $_GET, $_POST, $_SESSION, cookies, and header
 | `MAX_DATA` | `2048` | Max data size per variable |
 | `LOG_LEVEL` | `info` | Log level: debug, info, warn, error |
 
+## Connection Modes: TCP vs Unix Socket
+
+| Feature | TCP | Unix Socket |
+|---------|-----|-------------|
+| **Setup** | Easy (default) | Simple (one env var) |
+| **Performance** | Good | Excellent (lower latency) |
+| **Security** | Port accessible to network | File-based permissions |
+| **Remote Debugging** | ✅ Supported | ❌ Local only |
+| **Docker** | ✅ Works with host.docker.internal | ❌ Requires volume mount |
+| **Stale Socket** | Manual port cleanup | Auto-cleanup |
+| **Default** | `XDEBUG_PORT=9003` | Disabled (use TCP) |
+
+**Quick Decision Guide:**
+- 🏠 **Local development?** → Use Unix socket for best performance
+- 🐳 **Docker on same machine?** → Use Unix socket with volume mount
+- 🌐 **Remote server?** → Use TCP
+- 🚀 **Maximum speed?** → Use Unix socket
+- 📝 **Don't know?** → Start with TCP (default), switch to Unix socket if needed
+
 ## How It Works
 
-1. **MCP Server starts** and listens for Xdebug connections on port 9003
+1. **MCP Server starts** and listens for Xdebug connections (TCP port 9003 or Unix socket)
 2. **PHP script runs** with Xdebug enabled
 3. **Xdebug connects** to the MCP server via DBGp protocol
 4. **AI uses MCP tools** to control debugging (set breakpoints, step, inspect)
 5. **DBGp commands** are sent to Xdebug, responses parsed and returned
 
 ```
-┌─────────────┐     MCP/stdio      ┌─────────────┐     DBGp/TCP      ┌─────────────┐
-│   Claude    │ ◄────────────────► │  xdebug-mcp │ ◄───────────────► │   Xdebug    │
+┌─────────────┐     MCP/stdio      ┌─────────────┐   DBGp/TCP or    ┌─────────────┐
+│   Claude    │ ◄────────────────► │  xdebug-mcp │ ◄─ Unix Socket ──► │   Xdebug    │
 │  (AI Agent) │                    │   Server    │                   │  (in PHP)   │
 └─────────────┘                    └─────────────┘                   └─────────────┘
 ```
+
+**Connection Options:**
+- **TCP (Default):** `xdebug.client_host=127.0.0.1` + `XDEBUG_PORT=9003`
+- **Unix Socket:** `xdebug.client_host=unix:///tmp/xdebug.sock` + `XDEBUG_SOCKET_PATH=/tmp/xdebug.sock`
 
 ## Troubleshooting
 
@@ -359,18 +408,55 @@ Use capture_request_context to see $_GET, $_POST, $_SESSION, cookies, and header
 1. Check that Xdebug is installed: `php -v` should show Xdebug
 2. Verify Xdebug config: `php -i | grep xdebug`
 3. Ensure `xdebug.client_host` points to the MCP server
-4. Check firewall allows connections on port 9003
+4. **For TCP:** Check firewall allows connections on port 9003
+5. **For Unix socket:** Verify socket path exists and has correct permissions: `ls -la /tmp/xdebug.sock`
+6. Check MCP server logs: `LOG_LEVEL=debug` for verbose output
 
 ### Connection issues with Docker
 
 1. For Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]`
 2. Verify container can reach host: `curl host.docker.internal:9003`
+3. Check xdebug logs in container: `docker logs <container-id> | grep xdebug`
+
+### Unix socket issues
+
+1. **"Address already in use"**: Socket file wasn't cleaned up
+   - Remove manually: `rm -f /tmp/xdebug.sock`
+   - MCP server will clean up automatically on next start
+2. **"Permission denied"**: Check socket file permissions
+   - List socket: `ls -la /tmp/xdebug.sock`
+   - Run as same user as PHP: `ps aux | grep php`
+3. **Socket path in php.ini:**
+   - Correct: `xdebug.client_host=unix:///tmp/xdebug.sock`
+   - Wrong: `xdebug.client_host=unix:/tmp/xdebug.sock` (missing one `/`)
 
 ### Breakpoints not hitting
 
 1. Ensure file paths match exactly (use container paths for Docker)
 2. Check breakpoint is resolved: `list_breakpoints`
 3. Verify script execution reaches that line
+4. Check that `xdebug.start_with_request=yes` is set
+5. Try a simple file to verify basic setup works
+
+### Performance issues
+
+1. If experiencing slow stepping, increase `COMMAND_TIMEOUT`:
+   - Default: 30000ms (30 seconds)
+   - Try: `COMMAND_TIMEOUT=60000` for slower systems
+2. For Unix sockets, verify socket is on fast filesystem (not network mount)
+3. Check system load: `top` - excessive context switching slows debugging
+
+### Server won't start
+
+1. **Port in use (TCP):**
+   - Find process: `lsof -i :9003`
+   - Kill it: `kill -9 <pid>`
+2. **Bad config:**
+   - Validate environment variables: `echo $XDEBUG_SOCKET_PATH`
+   - Check for typos in path names
+3. **Permission denied:**
+   - For Unix socket, ensure write permission to parent directory
+   - Example: `mkdir -p ~/.xdebug && chmod 700 ~/.xdebug`
 
 ## Contributing
 
