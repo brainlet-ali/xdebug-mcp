@@ -2,6 +2,7 @@
 layout: default
 title: Tools & Commands Reference | Xdebug MCP
 description: Complete reference of Xdebug MCP debugging tools and commands for breakpoints, execution control, variable inspection, and stack traces.
+permalink: /reference/tools-commands/
 ---
 
 # Tools & Commands Reference

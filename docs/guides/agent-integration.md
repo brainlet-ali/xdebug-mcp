@@ -2,6 +2,7 @@
 layout: default
 title: Agent Integration Guide | Xdebug MCP Server
 description: Complete setup guide for using Xdebug MCP with Claude Code, Cursor, Cline, VS Code, Copilot, Windsurf, and PhpStorm. Standalone PHP debugging with AI agents.
+permalink: /guides/agent-integration/
 ---
 
 # Agent Integration Guide

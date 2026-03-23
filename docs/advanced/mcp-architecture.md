@@ -2,6 +2,7 @@
 layout: default
 title: MCP Server Architecture | Xdebug MCP
 description: Technical architecture of Xdebug MCP Server. System design, components, data flow, and implementation details.
+permalink: /advanced/mcp-architecture/
 ---
 
 # MCP Server Architecture

@@ -10,8 +10,18 @@ github:
 
 # Configuration
 markdown: kramdown
-permalink: /:title/
+permalink: /:path/
 highlighter: rouge
+collections:
+  guides:
+    output: true
+    permalink: /guides/:name/
+  reference:
+    output: true
+    permalink: /reference/:name/
+  advanced:
+    output: true
+    permalink: /advanced/:name/
 
 # Links to wiki
 wiki_url: https://github.com/kpanuragh/xdebug-mcp/wiki

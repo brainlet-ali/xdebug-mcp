@@ -2,6 +2,7 @@
 layout: default
 title: DBGp Protocol Specification | Xdebug
 description: Complete DBGp protocol documentation. XML-based debugging protocol used by Xdebug with commands, responses, and examples.
+permalink: /advanced/dbgp-protocol/
 ---
 
 # DBGp Protocol Specification
