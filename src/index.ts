@@ -110,6 +110,7 @@ async function main() {
 
           case 'stopped': {
             logger.info(`Session ${session.id} already in stopped state`);
+            session.close();
             break;
           }
 
@@ -128,16 +129,6 @@ async function main() {
         );
         logger.warn(`Debug session ${session.id} may be in an unstable state`);
         session.close();
-      }
-
-      // Continue execution — PHP will break at breakpoints or run to completion
-      const result = await session.run();
-
-      // When script finishes (status=stopping), send stop to release PHP process.
-      // DBGp "stopping" state means the script completed but the engine is waiting
-      // for client acknowledgment before shutting down.
-      if (result.status === 'stopping') {
-          await session.stop();
       }
     } catch (error) {
       // Catch-all for any unexpected errors
