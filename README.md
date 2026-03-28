@@ -130,6 +130,7 @@ Notes:
 - Do not reuse the proxy's client-facing port for `XDEBUG_PORT`.
 - On startup, xdebug-mcp sends `proxyinit -p <listen-port> -k <idekey> -m 1`.
 - On shutdown, xdebug-mcp sends `proxystop -k <idekey>`.
+- In proxy mode, give `xdebug-mcp` a little extra time to boot and register before expecting proxied sessions to route successfully.
 - If `DBGP_PROXY_ALLOW_FALLBACK=false`, startup fails when proxy registration fails.
 - If `DBGP_PROXY_ALLOW_FALLBACK=true`, the server logs the error and continues in direct-listener mode.
 - In fallback mode, `xdebug-mcp` still starts successfully and behaves like a normal direct listener even though proxy registration did not succeed.
@@ -228,6 +229,8 @@ Do not install `xdebug-mcp` behind an MCP proxy or bundler in this setup. The un
 4. The proxy stores that registration and routes matching IDE-key sessions back to `xdebug-mcp`.
 5. On shutdown, `xdebug-mcp` sends:
    - `proxystop -k <DBGP_IDEKEY>`
+
+Depending on your environment, this registration step can add a small startup delay, so give the MCP server a moment to finish booting before expecting the proxy to route sessions to it.
 
 #### PHP/Xdebug Side In Proxy Mode
 
