@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "xdebug": {
-      "command": "npx",
-      "args": ["-y", "xdebug-mcp"],
+      "command": "node",
+      "args": ["/home/power/Projects/xdebug-mcp/dist/index.js"],
       "env": {
         "XDEBUG_PORT": "9003",
         "XDEBUG_HOST": "0.0.0.0",
