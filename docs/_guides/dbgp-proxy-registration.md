@@ -27,7 +27,7 @@ If you just want a single local debugging listener, stay with the default direct
 | `XDEBUG_HOST` | No | Interface for the local callback listener. Defaults to `0.0.0.0`. |
 | `DBGP_PROXY_HOST` | Yes | Hostname or IP address of the DBGp proxy. Example: `127.0.0.1`. |
 | `DBGP_PROXY_PORT` | Yes | Port where the DBGp proxy accepts `proxyinit` and `proxystop`. Example: `9001`. |
-| `DBGP_IDEKEY` | Yes | IDE key that the proxy should route to this MCP server. Use a value distinct from PhpStorm and every other running agent, for example `warp-mcp`, `claude-mcp`, or `codex-mcp`. |
+| `DBGP_IDEKEY` | Yes | IDE key that the proxy should route to this MCP server. Use a value distinct from PhpStorm and every other running agent, for example `xdebug-warp`, `xdebug-claude`, or `xdebug-codex`. |
 | `DBGP_PROXY_ALLOW_FALLBACK` | No | When `true` (default), continue in direct-listener mode if proxy registration fails. When `false`, fail startup instead. |
 
 Important constraints:
@@ -54,7 +54,7 @@ Start from [`mcp-config.proxy.example.json`](../../mcp-config.proxy.example.json
         "XDEBUG_HOST": "0.0.0.0",
         "DBGP_PROXY_HOST": "127.0.0.1",
         "DBGP_PROXY_PORT": "9001",
-        "DBGP_IDEKEY": "warp-mcp",
+        "DBGP_IDEKEY": "xdebug-warp",
         "DBGP_PROXY_ALLOW_FALLBACK": "false",
         "LOG_LEVEL": "info"
       }
@@ -76,7 +76,7 @@ Start from [`mcp-config.proxy.example.json`](../../mcp-config.proxy.example.json
         "XDEBUG_HOST": "0.0.0.0",
         "DBGP_PROXY_HOST": "127.0.0.1",
         "DBGP_PROXY_PORT": "9001",
-        "DBGP_IDEKEY": "warp-mcp",
+        "DBGP_IDEKEY": "xdebug-warp",
         "DBGP_PROXY_ALLOW_FALLBACK": "false",
         "LOG_LEVEL": "info"
       }
@@ -91,9 +91,9 @@ If you run more than one AI agent against the same DBGp proxy, each agent must s
 
 Suggested values:
 
-- Warp: `DBGP_IDEKEY=warp-mcp`, `XDEBUG_PORT=9006`
-- Claude Code: `DBGP_IDEKEY=claude-mcp`, `XDEBUG_PORT=9007`
-- Codex: `DBGP_IDEKEY=codex-mcp`, `XDEBUG_PORT=9008`
+- Warp: `DBGP_IDEKEY=xdebug-warp`, `XDEBUG_PORT=9006`
+- Claude Code: `DBGP_IDEKEY=xdebug-claude`, `XDEBUG_PORT=9007`
+- Codex: `DBGP_IDEKEY=xdebug-codex`, `XDEBUG_PORT=9008`
 
 Keep PHP/Xdebug pointed at the proxy's client-facing port, then trigger the target agent using the matching IDE key.
 
@@ -122,9 +122,9 @@ xdebug.client_port=9003
 
 Then trigger the request with the IDE key registered for `xdebug-mcp`, for example:
 
-- `XDEBUG_TRIGGER=warp-mcp`
-- `XDEBUG_TRIGGER=claude-mcp`
-- `XDEBUG_TRIGGER=codex-mcp`
+- `XDEBUG_TRIGGER=xdebug-warp`
+- `XDEBUG_TRIGGER=xdebug-claude`
+- `XDEBUG_TRIGGER=xdebug-codex`
 
 You can use the same values with `XDEBUG_SESSION` if that matches your workflow.
 

@@ -32,7 +32,7 @@ Optional DBGp proxy registration:
 ```bash
 DBGP_PROXY_HOST=127.0.0.1
 DBGP_PROXY_PORT=9001
-DBGP_IDEKEY=claude-mcp
+DBGP_IDEKEY=xdebug-claude
 DBGP_PROXY_ALLOW_FALLBACK=true
 ```
 
