@@ -101,6 +101,17 @@ When debugging PHP in Docker containers, you need path mappings to translate con
 }
 ```
 
+### With DBGp Proxy Registration
+
+If you already use a DBGp proxy, keep [`mcp-config.example.json`](./mcp-config.example.json) as the default direct-listener example and start from [`mcp-config.proxy.example.json`](./mcp-config.proxy.example.json) for proxy registration.
+
+Proxy mode requires:
+- TCP listener mode for `xdebug-mcp` (not `XDEBUG_SOCKET_PATH`)
+- a unique callback port such as `9006`, `9007`, or `9008` for `XDEBUG_PORT`
+- `DBGP_PROXY_HOST`, `DBGP_PROXY_PORT`, and `DBGP_IDEKEY`
+
+See the [DBGp Proxy Registration Guide](./docs/_guides/dbgp-proxy-registration.md) for the full setup, multi-agent examples, and PHP/Xdebug proxy configuration.
+
 ## PHP/Xdebug Configuration
 
 ### php.ini (or xdebug.ini)

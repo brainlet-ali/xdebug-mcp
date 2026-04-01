@@ -8,13 +8,32 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig } from './config.js';
+import { DbgpProxyClient } from './dbgp/proxy.js';
 import { DbgpServer } from './dbgp/server.js';
 import { SessionManager } from './session/manager.js';
+import type { DebugSession } from './session/session.js';
 import { registerAllTools, createToolsContext, ToolsContext } from './tools/index.js';
 import { logger } from './utils/logger.js';
 
+/**
+ * Start the MCP server and optionally register its DBGp listener with an external proxy.
+ */
 async function main() {
   const config = loadConfig();
+  const proxyIntegration = config.proxy
+    ? {
+        config: config.proxy,
+        // Reuse the server command timeout so proxy control traffic follows the same operator expectation.
+        client: new DbgpProxyClient(
+          {
+            host: config.proxy.host,
+            port: config.proxy.port,
+            ideKey: config.proxy.ideKey,
+          },
+          config.commandTimeout
+        ),
+      }
+    : null;
 
   logger.info('Starting Xdebug MCP Server...');
   logger.debug('Configuration:', config);
@@ -37,7 +56,7 @@ async function main() {
     logger.info(`  File: ${connection.initPacket?.fileUri}`);
     logger.info(`  IDE Key: ${connection.initPacket?.ideKey}`);
 
-    let session: any = null;
+    let session: DebugSession | null = null;
 
     try {
       // === PHASE 1: Session Creation ===
@@ -166,6 +185,31 @@ async function main() {
     process.exit(1);
   }
 
+  if (proxyIntegration) {
+    const { client: dbgpProxyClient, config: proxyConfig } = proxyIntegration;
+    try {
+      // Register only after the TCP listener is live so the proxy never routes sessions to a dead endpoint.
+      const registration = await dbgpProxyClient.register(config.dbgpPort, true);
+      const proxyTarget = registration.address && registration.port
+        ? `${registration.address}:${registration.port}`
+        : 'unknown proxy endpoint';
+      logger.info(
+        `Registered IDE key '${registration.ideKey}' with DBGp proxy ${proxyConfig.host}:${proxyConfig.port} (proxy server: ${proxyTarget})`
+      );
+    } catch (error) {
+      logger.error(
+        `Failed to register with DBGp proxy ${proxyConfig.host}:${proxyConfig.port}: ${error instanceof Error ? error.message : String(error)}`
+      );
+
+      if (!proxyConfig.allowFallback) {
+        await dbgpServer.stop();
+        process.exit(1);
+      }
+
+      logger.warn('Continuing in direct-listener mode because DBGP_PROXY_ALLOW_FALLBACK is enabled');
+    }
+  }
+
   // Initialize MCP server
   const mcpServer = new McpServer({
     name: 'xdebug-mcp',
@@ -196,6 +240,18 @@ async function main() {
 
     logger.info('Shutting down...');
     sessionManager.closeAllSessions();
+    if (proxyIntegration?.client.isRegistered) {
+      const { client: dbgpProxyClient, config: proxyConfig } = proxyIntegration;
+      try {
+        // Unregister first so the proxy stops routing new sessions while this process is exiting.
+        await dbgpProxyClient.unregister();
+        logger.info(`Removed DBGp proxy registration for IDE key '${proxyConfig.ideKey}'`);
+      } catch (error) {
+        logger.warn(
+          `Failed to remove DBGp proxy registration: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
     await dbgpServer.stop();
     process.exit(0);
   };
