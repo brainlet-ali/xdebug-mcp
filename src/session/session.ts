@@ -321,17 +321,31 @@ export class DebugSession extends EventEmitter {
     await this.connection.sendCommand('detach');
   }
 
-  private handleStepResponse(response: DbgpResponse): {
+  private async handleStepResponse(response: DbgpResponse): Promise<{
     status: DebugStatus;
     file?: string;
     line?: number;
-  } {
-    const status = response.status || 'break';
+  }> {
+    let status = response.status || 'break';
     this.status = status;
 
     if (response.message) {
       this.currentFile = response.message.filename;
       this.currentLine = response.message.lineno;
+    }
+
+    // DBGp quirk: when status is 'stopping', Xdebug has finished executing
+    // user code but is still holding the PHP runtime waiting for one more
+    // command before it releases. Without this, the HTTP response never
+    // flushes and the client hangs until the socket is forcibly closed.
+    if (status === 'stopping') {
+      try {
+        await this.connection.sendCommand('stop');
+      } catch {
+        // Connection may already be gone — script is done either way.
+      }
+      status = 'stopped';
+      this.status = status;
     }
 
     return {
