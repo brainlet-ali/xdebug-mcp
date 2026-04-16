@@ -8,17 +8,15 @@ import { EventEmitter } from 'events';
 import { XMLParser } from 'fast-xml-parser';
 import {
   DbgpResponse,
-  DbgpError,
   InitPacket,
   StackFrame,
   Context,
   Property,
   Breakpoint,
-  BreakpointType,
-  BreakpointState,
-  HitCondition,
   StreamData,
 } from './types.js';
+import { DbgpResponseAdapter, selectAdapter } from './adapter.js';
+import { V3Adapter } from './adapters/v3-adapter.js';
 import { logger } from '../utils/logger.js';
 
 enum ParserState {
@@ -49,6 +47,7 @@ export class DbgpConnection extends EventEmitter {
   private commandQueue: Array<() => void> = [];
   private xmlParser: XMLParser;
   private closed: boolean = false;
+  private adapter: DbgpResponseAdapter = new V3Adapter();
 
   public initPacket: InitPacket | null = null;
   public readonly id: string;
@@ -121,7 +120,21 @@ export class DbgpConnection extends EventEmitter {
       // Handle init packet (first message from Xdebug)
       if (parsed.init) {
         this.initPacket = this.parseInitPacket(parsed.init);
-        logger.info(`Debug session initialized: ${this.initPacket.fileUri}`);
+        logger.info(
+          `Debug session initialized: ${this.initPacket.fileUri} ` +
+          `(engine=${this.initPacket.engine?.name ?? 'unknown'} v${this.initPacket.engine?.version ?? '?'})`
+        );
+        // Select the protocol adapter based on the engine we're talking to.
+        // Fire-and-forget: any responses that arrive before this resolves will
+        // use the V3 default, which is safe for init-adjacent commands.
+        selectAdapter(this.initPacket.engine?.name, this.initPacket.engine?.version)
+          .then((adapter) => {
+            this.adapter = adapter;
+            logger.info(`DBGp adapter selected: ${adapter.name}`);
+          })
+          .catch((err) => {
+            logger.error('Failed to select protocol adapter, keeping default:', err);
+          });
         this.emit('init', this.initPacket);
         return;
       }
@@ -312,128 +325,33 @@ export class DbgpConnection extends EventEmitter {
     return !this.closed && !this.socket.destroyed;
   }
 
-  // === Response Parsing Helpers ===
+  // === Response Parsing — delegated to the protocol adapter ===
 
   parseStackFrames(response: DbgpResponse): StackFrame[] {
-    const data = response.data as Record<string, unknown>;
-    const stackData = data['stack'];
-
-    if (!stackData) return [];
-
-    const frames = Array.isArray(stackData) ? stackData : [stackData];
-    return frames.map((frame: Record<string, string>) => ({
-      level: parseInt(frame['@_level'] || '0', 10),
-      type: (frame['@_type'] || 'file') as 'file' | 'eval',
-      filename: frame['@_filename'] || '',
-      lineno: parseInt(frame['@_lineno'] || '0', 10),
-      where: frame['@_where'],
-      cmdbegin: frame['@_cmdbegin'],
-      cmdend: frame['@_cmdend'],
-    }));
+    return this.adapter.parseStackFrames(response);
   }
 
   parseContexts(response: DbgpResponse): Context[] {
-    const data = response.data as Record<string, unknown>;
-    const contextData = data['context'];
-
-    if (!contextData) return [];
-
-    const contexts = Array.isArray(contextData) ? contextData : [contextData];
-    return contexts.map((ctx: Record<string, string>) => ({
-      id: parseInt(ctx['@_id'] || '0', 10),
-      name: ctx['@_name'] || '',
-    }));
+    return this.adapter.parseContexts(response);
   }
 
   parseProperties(response: DbgpResponse): Property[] {
-    const data = response.data as Record<string, unknown>;
-    const propertyData = data['property'];
-
-    if (!propertyData) return [];
-
-    const properties = Array.isArray(propertyData) ? propertyData : [propertyData];
-    return properties.map((prop) => this.parsePropertyNode(prop));
+    return this.adapter.parseProperties(response);
   }
 
   parseProperty(response: DbgpResponse): Property | null {
-    const data = response.data as Record<string, unknown>;
-    const propertyData = data['property'];
-
-    if (!propertyData) return null;
-
-    return this.parsePropertyNode(propertyData as Record<string, unknown>);
-  }
-
-  private parsePropertyNode(prop: Record<string, unknown>): Property {
-    const attrs = prop as Record<string, string>;
-    const property: Property = {
-      name: attrs['@_name'] || '',
-      fullname: attrs['@_fullname'] || attrs['@_name'] || '',
-      type: attrs['@_type'] || 'unknown',
-    };
-
-    if (attrs['@_classname']) property.classname = attrs['@_classname'];
-    if (attrs['@_facet']) property.facet = attrs['@_facet'];
-    if (attrs['@_constant'] === '1') property.constant = true;
-    if (attrs['@_children'] === '1') property.children = true;
-    if (attrs['@_numchildren']) property.numchildren = parseInt(attrs['@_numchildren'], 10);
-    if (attrs['@_size']) property.size = parseInt(attrs['@_size'], 10);
-    if (attrs['@_page']) property.page = parseInt(attrs['@_page'], 10);
-    if (attrs['@_pagesize']) property.pagesize = parseInt(attrs['@_pagesize'], 10);
-    if (attrs['@_address']) property.address = attrs['@_address'];
-    if (attrs['@_key']) property.key = attrs['@_key'];
-    if (attrs['@_encoding']) property.encoding = attrs['@_encoding'];
-
-    // Get value
-    const textValue = prop['#text'] as string | undefined;
-    if (textValue !== undefined) {
-      if (attrs['@_encoding'] === 'base64') {
-        property.value = Buffer.from(textValue, 'base64').toString('utf8');
-      } else {
-        property.value = textValue;
-      }
-    }
-
-    // Parse nested properties
-    const nestedProps = prop['property'];
-    if (nestedProps) {
-      const nested = Array.isArray(nestedProps) ? nestedProps : [nestedProps];
-      property.properties = nested.map((p) =>
-        this.parsePropertyNode(p as Record<string, unknown>)
-      );
-    }
-
-    return property;
+    return this.adapter.parseProperty(response);
   }
 
   parseBreakpoints(response: DbgpResponse): Breakpoint[] {
-    const data = response.data as Record<string, unknown>;
-    const bpData = data['breakpoint'];
-
-    if (!bpData) return [];
-
-    const breakpoints = Array.isArray(bpData) ? bpData : [bpData];
-    return breakpoints.map((bp: Record<string, string>) => ({
-      id: bp['@_id'] || '',
-      type: (bp['@_type'] || 'line') as BreakpointType,
-      state: (bp['@_state'] || 'enabled') as BreakpointState,
-      resolved: bp['@_resolved'] === '1',
-      filename: bp['@_filename'],
-      lineno: bp['@_lineno'] ? parseInt(bp['@_lineno'], 10) : undefined,
-      function: bp['@_function'],
-      exception: bp['@_exception'],
-      expression: bp['@_expression'],
-      hitCount: bp['@_hit_count'] ? parseInt(bp['@_hit_count'], 10) : undefined,
-      hitValue: bp['@_hit_value'] ? parseInt(bp['@_hit_value'], 10) : undefined,
-      hitCondition: bp['@_hit_condition'] as HitCondition | undefined,
-    }));
+    return this.adapter.parseBreakpoints(response);
   }
 
   parseBreakpointSet(response: DbgpResponse): { id: string; resolved: boolean } {
-    const data = response.data as Record<string, string>;
-    return {
-      id: data['@_id'] || '',
-      resolved: data['@_resolved'] === '1',
-    };
+    return this.adapter.parseBreakpointSet(response);
+  }
+
+  get protocolAdapterName(): string {
+    return this.adapter.name;
   }
 }
